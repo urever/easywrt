@@ -38,7 +38,6 @@ jobs:
         sudo -E apt-get clean
         git config --global user.name 'GitHub Actions' && git config --global user.email 'noreply@github.com'
         df -h
-        FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true
     - name: Clone source code
       env: 
         REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-6.6
