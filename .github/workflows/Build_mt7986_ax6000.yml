@@ -1,22 +1,19 @@
-# 名称：红米 AX6000 自动编译 ImmortalWrt (6.6内核)
 name: Build Redmi AX6000 ImmortalWrt
 
-# 触发条件：手动点击 Run Workflow 触发
 on:
   workflow_dispatch:
     inputs:
       ssh:
-        description: 'SSH 远程连接调试'
+        description: 'SSH 远程调试'
         required: false
         default: 'false'
 
-# 环境变量（直接适配红米 AX6000 + ubootmod + openclash）
 env:
   REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-6.6
   REPO_BRANCH: main
   CONFIG_FILE: .config
-  DIY_SCRIPT: diy-part1.sh
-  UPLOAD_BIN_DIR: false
+  DIY_PART1: diy-part1.sh
+  DIY_PART2: diy-part2.sh
   UPLOAD_FIRMWARE: true
   TZ: Asia/Shanghai
 
@@ -26,10 +23,9 @@ jobs:
     permissions:
       contents: write
     steps:
-    - name: 检查仓库代码
-      uses: actions/checkout@main
+    - uses: actions/checkout@main
 
-    - name: 初始化编译环境
+    - name: 初始化环境
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
@@ -48,11 +44,11 @@ jobs:
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-    - name: 加载自定义脚本（添加插件+修改分区）
+    - name: 加载自定义脚本1（添加插件）
       run: |
-        chmod +x $DIY_SCRIPT
+        chmod +x $DIY_PART1
         cd openwrt
-        $GITHUB_WORKSPACE/$DIY_SCRIPT
+        $GITHUB_WORKSPACE/$DIY_PART1
 
     - name: 更新 feeds
       run: |
@@ -60,17 +56,21 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
+    - name: 加载自定义脚本2（修改IP/设置）
+      run: |
+        chmod +x $DIY_PART2
+        cd openwrt
+        $GITHUB_WORKSPACE/$DIY_PART2
+
     - name: 加载编译配置
       run: |
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
         cd openwrt
         make defconfig
 
-    - name: SSH 远程调试（可选）
+    - name: SSH 远程调试
       uses: mxschmitt/action-tmate@main
       if: ${{ github.event.inputs.ssh == 'true' }}
-      with:
-        detached: true
 
     - name: 开始编译
       id: compile
@@ -78,20 +78,16 @@ jobs:
         cd openwrt
         make -j$(nproc) download
         make -j$(nproc)
-        echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: 整理固件文件
+    - name: 整理固件
       id: organize
-      if: ${{ steps.compile.outputs.status == 'success' && !cancelled() }}
       run: |
         cd openwrt/bin/targets/mediatek/mt7986
         rm -rf packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: 上传固件到 GitHub Actions
+    - name: 上传固件
       uses: actions/upload-artifact@main
-      if: ${{ steps.organize.outputs.status == 'success' && !cancelled() }}
       with:
-        name: Redmi_AX6000_firmware
+        name: Redmi_AX6000_110M
         path: ${{ env.FIRMWARE }}
