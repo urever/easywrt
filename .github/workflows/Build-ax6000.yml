@@ -2,11 +2,6 @@ name: Build Redmi AX6000 ImmortalWrt
 
 on:
   workflow_dispatch:
-    inputs:
-      ssh:
-        description: 'SSH 远程调试'
-        required: false
-        default: 'false'
 
 env:
   REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-6.6
@@ -14,7 +9,6 @@ env:
   CONFIG_FILE: .config
   DIY_PART1: diy-part1.sh
   DIY_PART2: diy-part2.sh
-  UPLOAD_FIRMWARE: true
   TZ: Asia/Shanghai
 
 jobs:
@@ -25,15 +19,12 @@ jobs:
     steps:
     - uses: actions/checkout@main
 
-    - name: 初始化环境
+    - name: 初始化编译环境
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
-        sudo -E apt-get -qq update
-        sudo -E apt-get -qq install build-essential cmake flex bison g++ gcc git libncurses5-dev libssl-dev openssl python3 python3-pyelftools rsync unzip zlib1g-dev wget curl
-        sudo -E apt-get -qq autoremove --purge
-        sudo -E apt-get -qq clean
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake flex bison g++ gcc git libncurses5-dev libssl-dev openssl python3 python3-pyelftools rsync unzip zlib1g-dev wget curl
         sudo timedatectl set-timezone "$TZ"
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
@@ -44,44 +35,41 @@ jobs:
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-    - name: 加载自定义脚本1（添加插件）
+    - name: 执行自定义脚本1
       run: |
         chmod +x $DIY_PART1
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_PART1
 
-    - name: 更新 feeds
+    - name: 更新软件源
       run: |
         cd openwrt
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: 加载自定义脚本2（修改IP/设置）
+    - name: 执行自定义脚本2
       run: |
         chmod +x $DIY_PART2
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_PART2
 
-    - name: 加载编译配置
+    - name: 加载配置
       run: |
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
         cd openwrt
         make defconfig
 
-    # 修复：SSH 远程调试
-    - name: SSH 远程调试
-      uses: mxschmitt/action-tmate@v3
-      if: ${{ github.event.inputs.ssh == 'true' }}
-
-    - name: 开始编译
-      id: compile
+    - name: 下载依赖
       run: |
         cd openwrt
         make -j$(nproc) download
+
+    - name: 开始编译
+      run: |
+        cd openwrt
         make -j$(nproc)
 
     - name: 整理固件
-      id: organize
       run: |
         cd openwrt/bin/targets/mediatek/mt7986
         rm -rf packages
